@@ -38,7 +38,7 @@ const Polly = new AWS.Polly(
   }
 );
 app.get("/", () => {
-  console.log("this");
+  console.log("second server ping");
 });
 function verifyAndDecode(header) {
   try {
