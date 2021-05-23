@@ -37,9 +37,7 @@ const Polly = new AWS.Polly(
     console.log(data);
   }
 );
-app.get("/", () => {
-  console.log("second server ping");
-});
+
 function verifyAndDecode(header) {
   try {
     return jwt.verify(header, secretJwt, { algorithms: ["HS256"] });
@@ -638,4 +636,7 @@ async function deleteRequest(search) {
 
 server.listen(process.env.PORT || 5000, () => {
   console.log("second server works");
+});
+app.get("/", () => {
+  console.log("Second server ping.");
 });
