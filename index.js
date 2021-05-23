@@ -37,7 +37,9 @@ const Polly = new AWS.Polly(
     console.log(data);
   }
 );
-
+app.get("/", () => {
+  console.log("this");
+});
 function verifyAndDecode(header) {
   try {
     return jwt.verify(header, secretJwt, { algorithms: ["HS256"] });
