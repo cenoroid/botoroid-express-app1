@@ -19,13 +19,6 @@ const uri = process.env.MONGODBURI;
 const youtubeAPIKey = process.env.YOUTUBE_API_KEY;
 const key = process.env.JWT_KEY;
 const secretJwt = Buffer.from(key, "base64");
-console.log(key, secretJwt);
-let requestsArray = [];
-let goalsArray = [];
-let redemptionsArray = [];
-let timerInterval;
-let timer;
-let timerRunning = false;
 
 const Polly = new AWS.Polly(
   {
@@ -37,6 +30,30 @@ const Polly = new AWS.Polly(
     console.log(data);
   }
 );
+const client = new MongoClient(uri, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  connectTimeoutMS: 30000,
+  keepAlive: 1,
+});
+
+let requestsArray = [];
+let goalsArray = [];
+let redemptionsArray = [];
+let timerInterval;
+let timer;
+let timerRunning = false;
+let showRL = false;
+let database;
+
+client.connect(() => {
+  clientConnected = true;
+  database = client.db("botoroid");
+  console.log("database connected");
+  initRequests();
+  initGoals();
+  initRedemptions();
+});
 
 function verifyAndDecode(header) {
   try {
@@ -45,24 +62,18 @@ function verifyAndDecode(header) {
     return console.log(e);
   }
 }
-const client = new MongoClient(uri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  connectTimeoutMS: 30000,
-  keepAlive: 1,
-});
-let showRL = false;
+
 io.on("connection", (socket) => {
-  console.log(socket.rooms);
   socket.on("join", (data) => {
     socket.join(data.toLowerCase());
-    console.log(socket.rooms);
+    console.log("welcome " + data);
     if (data === "greenbar") {
       getGreenBarData();
     }
   });
-  socket.on("disconnect", () => {
-    console.log(socket.rooms);
+  socket.on("disconnecting", () => {
+    let name = Array.from(socket.rooms)[1];
+    name ? console.log(name + " is gone") : "";
   });
   socket.on("get", (data) => {
     getData(data, socket, false);
@@ -72,6 +83,9 @@ io.on("connection", (socket) => {
   });
   socket.on("getgoals", () => {
     socket.emit("getgoals", goalsArray);
+  });
+  socket.on("getredemptions", () => {
+    socket.emit("getredemptions", redemptionsArray);
   });
   socket.on("updatepref", (data) => {
     updatePref(data, socket);
@@ -87,7 +101,7 @@ io.on("connection", (socket) => {
     for (let index = 0; index < requestsArray.length; index++) {
       requestsArray[index].id = index + 1;
     }
-    io.sockets.emit("getrequests", requestsArray);
+    io.sockets.emit("getrequests", { requests: requestsArray });
   });
   socket.on("gettimer", () => {
     socket.emit("starttimer", timer, timerRunning);
@@ -99,9 +113,9 @@ io.on("connection", (socket) => {
       requestsArray[index].id = index + 1;
     }
     deleteRequest(data.lookup);
-    io.sockets.emit("getrequests", requestsArray);
+    io.sockets.emit("getrequests", { requests: requestsArray });
   });
-  socket.on("requestupdate", async (data) => {
+  socket.on("redemption", async (data) => {
     let text = data.username + " has redeemed " + data.subtype;
     Polly.synthesizeSpeech(
       {
@@ -128,7 +142,8 @@ io.on("connection", (socket) => {
       data.subtype === "short video request"
     ) {
       linkCheck(data);
-    } else {
+    }
+    if (data.subtype === "game request") {
       requestsArray.push({
         name: data.username,
         subtype: data.subtype,
@@ -136,9 +151,12 @@ io.on("connection", (socket) => {
         id: requestsArray.length + 1,
         lookup: data.lookup,
       });
-      io.sockets.emit("getrequests", requestsArray);
+      io.sockets.emit("getrequests", { requests: requestsArray });
       addRequest(data);
       newLog(data);
+    }
+    if (data.subtype === "test") {
+      console.log("aha");
     }
   });
   socket.on("starttimer", () => {
@@ -246,32 +264,36 @@ io.on("connection", (socket) => {
     showRL = data;
     io.sockets.emit("getrequests", { show: showRL, requests: requestsArray });
   });
-});
-let database;
-client.connect(() => {
-  clientConnected = true;
-  database = client.db("botoroid");
-  console.log("database connected");
-  (async function () {
-    requestsArray = await initData("requests").then((res) => {
-      for (let index = 0; index < res.length; index++) {
-        res[index].id = index + 1;
-      }
-      return res;
+  socket.on("updategoals", async () => {
+    await initGoals().then(() => {
+      io.sockets.emit("getgoals", goalsArray);
     });
-  })();
-  initGoals();
-  (async function () {
-    redemptionsArray = await initData("redemptions").then((res) => {
-      for (let index = 0; index < res.length; index++) {
-        res[index].id = index + 1;
-      }
-      return res;
+  });
+  socket.on("updateredemptions", async () => {
+    await initRedemptions().then(() => {
+      io.sockets.emit("getredemptions", redemptionsArray);
     });
-  })();
+  });
 });
+
+async function initRequests() {
+  requestsArray = await initData("requests").then((res) => {
+    for (let index = 0; index < res.length; index++) {
+      res[index].id = index + 1;
+    }
+    return res;
+  });
+}
 async function initGoals() {
   goalsArray = await initData("goals").then((res) => {
+    for (let index = 0; index < res.length; index++) {
+      res[index].id = index + 1;
+    }
+    return res;
+  });
+}
+async function initRedemptions() {
+  redemptionsArray = await initData("redemptions").then((res) => {
     for (let index = 0; index < res.length; index++) {
       res[index].id = index + 1;
     }
@@ -311,7 +333,7 @@ function requestTimer(lookup) {
     for (let index = 0; index < requestsArray.length; index++) {
       requestsArray[index].id = index + 1;
     }
-    io.sockets.emit("getrequests", requestsArray);
+    io.sockets.emit("getrequests", { requests: requestsArray });
   }
 }
 async function linkCheck(data) {
@@ -340,7 +362,7 @@ async function linkCheck(data) {
     id: requestsArray.length + 1,
     lookup: data.lookup,
   });
-  io.sockets.emit("getrequests", requestsArray);
+  io.sockets.emit("getrequests", { requests: requestsArray });
   addRequest(data);
   newLog(data);
 }
@@ -355,10 +377,6 @@ async function getYoutubeTitle(id) {
   });
   return res;
 }
-
-app.get("/getredemptions", (req, res) => {
-  return res.json(redemptionsArray);
-});
 
 app.get("/getlogs", (req, res) => {
   let logs;
