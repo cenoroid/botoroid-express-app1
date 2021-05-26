@@ -8,11 +8,7 @@ dotenv.config();
 const MongoClient = require("mongodb").MongoClient;
 const { ObjectId } = require("bson");
 const app = express();
-app.use(
-  cors({
-    origin: "http://localhost:3000",
-  })
-);
+app.use(cors());
 app.use(express.json());
 const server = require("http").createServer(app);
 const io = require("socket.io")(server, {
