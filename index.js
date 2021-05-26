@@ -10,7 +10,7 @@ const { ObjectId } = require("bson");
 const app = express();
 app.use(cors());
 app.use(express.json());
-const server = require("https").createServer(app);
+const server = require("http").createServer(app);
 const io = require("socket.io")(server, {
   cors: { origin: "*" },
   allowEIO3: true,
