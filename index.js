@@ -10,10 +10,8 @@ const { ObjectId } = require("bson");
 const app = express();
 app.use(cors());
 app.use(express.json());
-const server = app.listen(5000, () => {
-  console.log("second server works");
-});
-const io = require("socket.io").listen(server, {
+const server = require("https").createServer(app);
+const io = require("socket.io")(server, {
   cors: { origin: "*" },
   allowEIO3: true,
 });
@@ -654,6 +652,9 @@ async function deleteRequest(search) {
   await database.collection("requests").deleteOne({ lookup: search });
 }
 
+server.listen(process.env.PORT || 5000, () => {
+  console.log("second server works");
+});
 app.get("/", () => {
   console.log("Second server ping.");
 });
