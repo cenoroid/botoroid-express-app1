@@ -632,14 +632,14 @@ async function updateGoal(search) {
     .updateOne({ goal: search.goal }, { $inc: { current: search.value } })
     .then(() => {});
 }
-async function updateCurrency(search) {
+async function updateCurrency(data) {
+  data.value = Number(data.value);
   await database
     .collection("users")
-    .updateOne(
-      { username: search.username },
-      { $inc: { currency: search.value } }
-    )
-    .then(() => {});
+    .updateOne({ username: data.username }, { $inc: { currency: data.value } })
+    .then(() => {
+      io.to(data.username.toLowerCase()).emit("updatecurrency", data.value);
+    });
 }
 async function updatePref(search) {
   await database.collection("users").updateOne(
