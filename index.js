@@ -431,6 +431,7 @@ app.post("/getcurrency", (req, res) => {
   })();
 });
 app.post("/getuser", (req, res) => {
+  console.log(req.body);
   let data = verifyAndDecode(req.body.userToken);
   async function get() {
     getUser(data.user_id).then((result) => {
