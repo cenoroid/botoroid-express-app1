@@ -204,6 +204,7 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("goalupdate", (data) => {
+    console.log("we are 1");
     let text =
       data.username +
       " has added " +
@@ -221,6 +222,7 @@ io.on("connection", (socket) => {
         if (err) {
           console.log(err);
         } else if (res) {
+          console.log("we are 2");
           io.sockets.emit("event", {
             tts: res.AudioStream,
             text,
