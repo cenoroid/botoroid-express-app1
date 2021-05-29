@@ -190,7 +190,6 @@ io.on("connection", (socket) => {
   });
   socket.on("updatecurrency", (data) => {
     updateCurrency(data);
-    io.to(data.username.toLowerCase()).emit("updatecurrency", data.value);
   });
   socket.on("refund", (data) => {
     console.log(data);
