@@ -7,6 +7,7 @@ const AWS = require("aws-sdk");
 dotenv.config();
 const MongoClient = require("mongodb").MongoClient;
 const { ObjectId } = require("bson");
+const { getPackedSettings } = require("http2");
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -69,6 +70,19 @@ io.on("connection", (socket) => {
     console.log("welcome " + data);
     if (data === "greenbar") {
       getGreenBarData();
+    }
+    if (data === "streamer") {
+      console.log("hi");
+      socket.emit("getrequests", { show: showRL, requests: requestsArray });
+      (async () => {
+        await getSettings().then((item) => {
+          socket.emit(
+            "getsettings",
+
+            item
+          );
+        });
+      })();
     }
   });
   socket.on("disconnecting", () => {
@@ -273,8 +287,32 @@ io.on("connection", (socket) => {
       io.sockets.emit("getredemptions", redemptionsArray);
     });
   });
+  socket.on("updatesettings", (data) => {
+    updateSettings(data);
+  });
 });
-
+async function updateSettings(data) {
+  (async () => {
+    console.log(data);
+    await Object.keys(data).forEach((type) => {
+      Object.entries(data[type]).forEach(async (field) => {
+        database.collection("settings").updateOne(
+          { type },
+          {
+            $set: {
+              [field[0]]: field[1],
+            },
+          }
+        );
+      });
+    });
+    setTimeout(async () => {
+      await getSettings().then((item) => {
+        io.sockets.emit("getsettings", item);
+      });
+    }, 1000);
+  })();
+}
 async function initRequests() {
   requestsArray = await initData("requests").then((res) => {
     for (let index = 0; index < res.length; index++) {
@@ -431,11 +469,11 @@ app.post("/getcurrency", (req, res) => {
 });
 app.post("/getuser", (req, res) => {
   let data = verifyAndDecode(req.body.userToken);
-  async () => {
+  (async () => {
     getUser(data.user_id).then((result) => {
       return res.json(result);
     });
-  };
+  })();
 });
 
 async function deleteEvent(id) {
@@ -464,16 +502,28 @@ async function getUser(input) {
             };
           });
       }
-
-      item.settings = await database.collection("settings").find({}).toArray();
-
+      item.settings = await getSettings();
+      console.log(item.settings);
       return item;
     });
 
   return data;
 }
+async function getSettings() {
+  item = await database
+    .collection("settings")
+    .find({})
+    .toArray()
+    .then((array) => {
+      let entries = new Map();
+      for (let i = 0; i < array.length; i++) {
+        entries.set(array[i].type, array[i]);
+      }
+      return Object.fromEntries(entries);
+    });
+  return item;
+}
 async function getGreenBarData() {
-  console.log("yes ok");
   data = await database
     .collection("greenbar")
     .find({})
@@ -532,6 +582,7 @@ async function updateGreenBarTitle() {
     }
   }
 }
+
 async function updateGreenBarAmount(value) {
   await database
     .collection("greenbar")
@@ -545,6 +596,7 @@ async function updateGreenBarAmount(value) {
       io.sockets.emit("greenbarcurrent", value);
     });
 }
+
 async function resetGoals() {
   console.log(goalsArray);
   let needsUpdate = [];
