@@ -72,7 +72,6 @@ io.on("connection", (socket) => {
       getGreenBarData();
     }
     if (data === "streamer") {
-      console.log("hi");
       socket.emit("getrequests", { show: showRL, requests: requestsArray });
       (async () => {
         await getSettings().then((item) => {
@@ -338,6 +337,9 @@ async function initRedemptions() {
   });
 }
 async function getLog() {
+  let now = new Date();
+  let last_30d = now - datetime.timedelta((days = 30));
+  console.log(last_30d);
   data = await database
     .collection("events")
     .find()
