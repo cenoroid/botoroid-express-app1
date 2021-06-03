@@ -337,12 +337,10 @@ async function initRedemptions() {
   });
 }
 async function getLog() {
-  let now = new Date();
-  let last_30d = now - datetime.timedelta((days = 30));
-  console.log(last_30d);
+  let last30days = new Date(new Date().setDate(new Date().getDate() - 30));
   data = await database
     .collection("events")
-    .find()
+    .find({ date: { $gte: last30days } })
     .sort({ date: -1 })
     .toArray()
     .then((item) => {
