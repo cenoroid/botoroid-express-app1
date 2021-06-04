@@ -289,28 +289,47 @@ io.on("connection", (socket) => {
   socket.on("updatesettings", (data) => {
     updateSettings(data);
   });
+  socket.on("savegoals", (data) => {
+    updateGoals(data);
+  });
 });
 async function updateSettings(data) {
-  (async () => {
-    console.log(data);
-    await Object.keys(data).forEach((type) => {
-      Object.entries(data[type]).forEach(async (field) => {
-        database.collection("settings").updateOne(
-          { type },
-          {
-            $set: {
-              [field[0]]: field[1],
-            },
-          }
-        );
-      });
+  await Object.keys(data).forEach((type) => {
+    Object.entries(data[type]).forEach(async (field) => {
+      database.collection("settings").updateOne(
+        { type },
+        {
+          $set: {
+            [field[0]]: field[1],
+          },
+        }
+      );
     });
-    setTimeout(async () => {
-      await getSettings().then((item) => {
-        io.sockets.emit("getsettings", item);
-      });
-    }, 1000);
-  })();
+  });
+  setTimeout(async () => {
+    await getSettings().then((item) => {
+      io.sockets.emit("getsettings", item);
+    });
+  }, 1000);
+}
+async function updateGoals(data) {
+  await Object.keys(data).forEach((goal) => {
+    Object.entries(data[goal]).forEach(async (field) => {
+      database.collection("goals").updateOne(
+        { goal },
+        {
+          $set: {
+            [field[0]]: field[1],
+          },
+        }
+      );
+    });
+  });
+  setTimeout(async () => {
+    await initGoals().then((item) => {
+      io.sockets.emit("getgoals", item);
+    });
+  }, 1000);
 }
 async function initRequests() {
   requestsArray = await initData("requests").then((res) => {
