@@ -321,7 +321,8 @@ async function updateGoals(data) {
           $set: {
             [field[0]]: field[1],
           },
-        }
+        },
+        { upsert: true }
       );
     });
   });
