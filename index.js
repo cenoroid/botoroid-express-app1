@@ -327,6 +327,7 @@ async function updateGoals(data) {
   });
   setTimeout(async () => {
     await initGoals().then((item) => {
+      console.log(item);
       io.sockets.emit("getgoals", item);
     });
   }, 1000);
@@ -346,6 +347,7 @@ async function initGoals() {
     }
     return res;
   });
+  return goalsArray;
 }
 async function initRedemptions() {
   redemptionsArray = await initData("redemptions").then((res) => {
