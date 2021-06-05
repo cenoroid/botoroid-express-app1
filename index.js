@@ -44,7 +44,7 @@ let redemptionsArray = [];
 let timerInterval;
 let timer;
 let timerRunning = false;
-let showRL = false;
+
 let database;
 
 client.connect(() => {
@@ -72,7 +72,7 @@ io.on("connection", (socket) => {
       getGreenBarData();
     }
     if (data === "streamer") {
-      socket.emit("getrequests", { show: showRL, requests: requestsArray });
+      socket.emit("getrequests", requestsArray);
       (async () => {
         await getSettings().then((item) => {
           socket.emit(
@@ -92,7 +92,7 @@ io.on("connection", (socket) => {
     getData(data, socket, false);
   });
   socket.on("getrequests", () => {
-    socket.emit("getrequests", { show: showRL, requests: requestsArray });
+    socket.emit("getrequests", requestsArray);
   });
   socket.on("getgoals", () => {
     socket.emit("getgoals", goalsArray);
@@ -114,7 +114,7 @@ io.on("connection", (socket) => {
     for (let index = 0; index < requestsArray.length; index++) {
       requestsArray[index].id = index + 1;
     }
-    io.sockets.emit("getrequests", { requests: requestsArray });
+    io.sockets.emit("getrequests", requestsArray);
   });
   socket.on("gettimer", () => {
     socket.emit("starttimer", timer, timerRunning);
@@ -126,7 +126,7 @@ io.on("connection", (socket) => {
       requestsArray[index].id = index + 1;
     }
     deleteRequest(data.lookup);
-    io.sockets.emit("getrequests", { requests: requestsArray });
+    io.sockets.emit("getrequests", requestsArray);
   });
   socket.on("redemption", async (data) => {
     let text = data.username + " has redeemed " + data.subtype;
@@ -272,10 +272,7 @@ io.on("connection", (socket) => {
     resetGreenBar(); //getgreenbardata and reset
     resetGoals(); //get goals and reset
   });
-  socket.on("communityday", (data) => {
-    showRL = data;
-    io.sockets.emit("getrequests", { show: showRL, requests: requestsArray });
-  });
+
   socket.on("updategoals", async () => {
     await initGoals().then(() => {
       io.sockets.emit("getgoals", goalsArray);
@@ -393,7 +390,7 @@ function requestTimer(lookup) {
     for (let index = 0; index < requestsArray.length; index++) {
       requestsArray[index].id = index + 1;
     }
-    io.sockets.emit("getrequests", { requests: requestsArray });
+    io.sockets.emit("getrequests", requestsArray);
   }
 }
 async function linkCheck(data) {
@@ -422,7 +419,7 @@ async function linkCheck(data) {
     id: requestsArray.length + 1,
     lookup: data.lookup,
   });
-  io.sockets.emit("getrequests", { requests: requestsArray });
+  io.sockets.emit("getrequests", requestsArray);
   addRequest(data);
   newLog(data);
 }
