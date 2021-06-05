@@ -313,6 +313,7 @@ async function updateSettings(data) {
   }, 1000);
 }
 async function updateGoals(data) {
+  console.log("lol");
   await Object.keys(data).forEach((goal) => {
     Object.entries(data[goal]).forEach(async (field) => {
       database.collection("goals").updateOne(
