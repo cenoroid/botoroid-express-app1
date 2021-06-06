@@ -66,7 +66,8 @@ function verifyAndDecode(header) {
 
 io.on("connection", (socket) => {
   socket.on("join", (data) => {
-    socket.join(data.toLowerCase());
+    socket.join(data.name.toLowerCase());
+    socket.version = data.version;
     console.log("welcome " + data);
     if (data === "greenbar") {
       getGreenBarData();
