@@ -6,8 +6,8 @@ const cors = require("cors");
 const AWS = require("aws-sdk");
 dotenv.config();
 const MongoClient = require("mongodb").MongoClient;
+const tmi = require("tmi.js");
 const { ObjectId } = require("bson");
-const { getPackedSettings } = require("http2");
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -37,7 +37,18 @@ const client = new MongoClient(uri, {
   connectTimeoutMS: 30000,
   keepAlive: 1,
 });
-
+const chatClientAdmin = new tmi.Client({
+  options: { debug: false },
+  connection: {
+    reconnect: true,
+    secure: true,
+  },
+  identity: {
+    username: "cenoroid",
+    password: "oauth:niz23sx5olygwakb0zyxit9427i2kk", //when no work https://twitchapps.com/tmi/
+  },
+  channels: ["cenoroid"],
+});
 let requestsArray = [];
 let goalsArray = [];
 let redemptionsArray = [];
@@ -46,7 +57,9 @@ let timer;
 let timerRunning = false;
 
 let database;
-
+chatClientAdmin.connect(() => {
+  console.log("chat is here");
+});
 client.connect(() => {
   clientConnected = true;
   database = client.db("botoroid");
@@ -68,26 +81,26 @@ io.on("connection", (socket) => {
   socket.on("join", (data) => {
     socket.join(data.name.toLowerCase());
     socket.version = data.version;
-    console.log("welcome " + data);
+    console.log("welcome " + data.name);
     if (data === "greenbar") {
       getGreenBarData();
     }
-    if (data === "streamer") {
+    if (data.name === "streamer") {
+      getGreenBarData();
       socket.emit("getrequests", requestsArray);
+      socket.emit("getgoals", goalsArray);
       (async () => {
         await getSettings().then((item) => {
-          socket.emit(
-            "getsettings",
-
-            item
-          );
+          socket.emit("getsettings", item);
         });
       })();
     }
   });
   socket.on("disconnecting", () => {
     let name = Array.from(socket.rooms)[1];
-    name ? console.log(name + " is gone") : "";
+    if (name) {
+      console.log(name + " is gone");
+    }
   });
   socket.on("get", (data) => {
     getData(data, socket, false);
@@ -165,12 +178,13 @@ io.on("connection", (socket) => {
         id: requestsArray.length + 1,
         lookup: data.lookup,
       });
-      io.sockets.emit("getrequests", { requests: requestsArray });
+      io.sockets.emit("getrequests", requestsArray);
       addRequest(data);
       newLog(data);
     }
-    if (data.subtype === "test") {
-      console.log("aha");
+    if (data.subtype === "vip for a year") {
+      //data=user
+      updateVip(data);
     }
   });
   socket.on("starttimer", () => {
@@ -290,6 +304,21 @@ io.on("connection", (socket) => {
   socket.on("savegoals", (data) => {
     updateGoals(data);
   });
+  socket.on("deletegoal", (data) => {
+    deleteGoal(data);
+  });
+  socket.on("saveredemptions", (data) => {
+    updateRedemptions(data);
+  });
+  socket.on("deleteredemption", (data) => {
+    deleteRedemption(data);
+  });
+  socket.on("reset", (data) => {
+    if (data.goal === "pinata") {
+      resetGreenBar(1);
+    }
+    resetGoal(data.goal);
+  });
 });
 async function updateSettings(data) {
   await Object.keys(data).forEach((type) => {
@@ -311,11 +340,14 @@ async function updateSettings(data) {
   }, 1000);
 }
 async function updateGoals(data) {
-  console.log("lol");
+  console.log(data);
   await Object.keys(data).forEach((goal) => {
+    console.log(goal);
     Object.entries(data[goal]).forEach(async (field) => {
       database.collection("goals").updateOne(
-        { goal },
+        {
+          goal: goal === "new goal" ? data[goal].goal : goal,
+        },
         {
           $set: {
             [field[0]]: field[1],
@@ -327,10 +359,83 @@ async function updateGoals(data) {
   });
   setTimeout(async () => {
     await initGoals().then((item) => {
-      console.log(item);
       io.sockets.emit("getgoals", item);
     });
   }, 1000);
+}
+async function deleteGoal(data) {
+  await database
+    .collection("goals")
+    .deleteOne({ goal: data.goal })
+    .then(() => {
+      setTimeout(async () => {
+        await initGoals().then((item) => {
+          io.sockets.emit("getgoals", item);
+        });
+      }, 1000);
+    });
+}
+async function updateRedemptions(data) {
+  console.log(data);
+  await Object.keys(data).forEach((redemption) => {
+    Object.entries(data[redemption]).forEach(async (field) => {
+      database.collection("redemptions").updateOne(
+        {
+          type:
+            redemption === "new redemption"
+              ? data[redemption].type
+              : redemption,
+        },
+        {
+          $set: {
+            [field[0]]: field[1],
+          },
+        },
+        { upsert: true }
+      );
+    });
+  });
+  setTimeout(async () => {
+    await initRedemptions().then((item) => {
+      io.sockets.emit("getredemptions", item);
+    });
+  }, 1000);
+}
+async function deleteRedemption(data) {
+  await database
+    .collection("redemptions")
+    .deleteOne({ type: data.type })
+    .then(() => {
+      setTimeout(async () => {
+        await initRedemptions().then((item) => {
+          io.sockets.emit("getredemptions", item);
+        });
+      }, 1000);
+    });
+}
+async function updateVip(data) {
+  await database
+    .collection("users")
+    .findOne({ username: data.username })
+    .then(async (res) => {
+      if (!res.vip) {
+        chatClientAdmin
+          .vip("cenoroid", data.username)
+          .catch((e) => console.log(e));
+      }
+      res.vip = res.vip
+        ? new Date(
+            new Date(res.vip).setFullYear(new Date(res.vip).getFullYear() + 1)
+          )
+        : new Date(new Date().setFullYear(new Date().getFullYear() + 1));
+      await database
+        .collection("users")
+        .updateOne({ username: res.username }, { $set: { vip: res.vip } });
+    })
+    .then(() => {
+      data.value = -data.value;
+      updateCurrency(data);
+    });
 }
 async function initRequests() {
   requestsArray = await initData("requests").then((res) => {
@@ -356,6 +461,7 @@ async function initRedemptions() {
     }
     return res;
   });
+  return redemptionsArray;
 }
 async function getLog() {
   let last30days = new Date(new Date().setDate(new Date().getDate() - 30));
@@ -524,7 +630,21 @@ async function getUser(input) {
           });
       }
       item.settings = await getSettings();
-      console.log(item.settings);
+
+      if (
+        item.vip &&
+        new Date(item.vip.toDateString()) < new Date(new Date().toDateString())
+      ) {
+        chatClientAdmin
+          .unvip("cenoroid", item.username)
+          .then(() => {
+            database
+              .collection("users")
+              .updateOne({ username: item.username }, { $unset: { vip: "" } });
+          })
+          .catch((e) => console.log(e));
+      }
+
       return item;
     });
 
@@ -545,7 +665,7 @@ async function getSettings() {
   return item;
 }
 async function getGreenBarData() {
-  data = await database
+  await database
     .collection("greenbar")
     .find({})
     .toArray()
@@ -553,16 +673,19 @@ async function getGreenBarData() {
       io.sockets.emit("greenbardata", item[0]);
     });
 }
-async function resetGreenBar() {
-  data = await database
+async function resetGreenBar(data) {
+  await database
     .collection("greenbar")
-    .find({})
+    .find({ _id: ObjectId("6080e9c360ce6ffaba4d2399") })
     .toArray()
     .then((item) => {
-      if (item[0].current >= item[0].end) {
+      if (item[0].ran) {
+        update = { ran: false };
+      } else if (item[0].current >= item[0].end) {
         update = {
           current: item[0].current - item[0].end,
           end: item[0].end + 5,
+          ran: data ? true : false,
         };
       } else {
         update = { end: item[0].end - 5 };
@@ -574,6 +697,9 @@ async function resetGreenBar() {
         }
       );
       getGreenBarData();
+      if (data) {
+        io.sockets.emit("pinata", item[0].end);
+      }
     });
 }
 greenBarTitleArray = [];
@@ -618,18 +744,15 @@ async function updateGreenBarAmount(value) {
     });
 }
 
-async function resetGoals() {
-  console.log(goalsArray);
-  let needsUpdate = [];
-  for (let index = 0; index < goalsArray.length; index++) {
-    if (goalsArray[index].current === goalsArray[index].end) {
-      needsUpdate.push(goalsArray[index].goal);
-    }
-  }
+async function resetGoal(goal) {
   await database
     .collection("goals")
-    .updateMany({ goal: { $in: needsUpdate } }, { $set: { current: 0 } })
-    .then(() => {});
+    .updateOne({ goal }, { $set: { current: 0 } })
+    .then(async () => {
+      await initGoals().then(() => {
+        io.sockets.emit("getgoals", goalsArray);
+      });
+    });
 }
 async function getData(collection, socket, all) {
   data = await database

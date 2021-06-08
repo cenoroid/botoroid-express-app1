@@ -21,6 +21,7 @@
     "node-blob": "0.0.2",
     "nodemon": "^2.0.7",
     "socket.io": "^4.0.1",
-    "stream": "0.0.2"
+    "stream": "0.0.2",
+    "tmi.js": "^1.8.3"
   }
 }
