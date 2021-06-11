@@ -45,7 +45,7 @@ const chatClientAdmin = new tmi.Client({
   },
   identity: {
     username: "cenoroid",
-    password: "oauth:niz23sx5olygwakb0zyxit9427i2kk", //when no work https://twitchapps.com/tmi/
+    password: process.env.TWITCH_CHAT_PASSWORD, //when no work https://twitchapps.com/tmi/
   },
   channels: ["cenoroid"],
 });
