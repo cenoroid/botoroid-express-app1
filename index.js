@@ -78,6 +78,7 @@ function verifyAndDecode(header) {
 }
 
 io.on("connection", (socket) => {
+  console.log("hi");
   socket.on("join", (data) => {
     socket.join(data.name.toLowerCase());
     socket.version = data.version;
@@ -143,6 +144,9 @@ io.on("connection", (socket) => {
     io.sockets.emit("getrequests", requestsArray);
   });
   socket.on("redemption", async (data) => {
+    let redemption = redemptionsArray[data.id - 1];
+    data.subtype = redemption.type;
+    data.value = redemption.cost;
     let text = data.username + " has redeemed " + data.subtype;
     Polly.synthesizeSpeech(
       {
@@ -217,6 +221,7 @@ io.on("connection", (socket) => {
     io.sockets.emit("stoptimer");
   });
   socket.on("updatecurrency", (data) => {
+    console.log(data);
     updateCurrency(data);
   });
   socket.on("refund", (data) => {
@@ -238,7 +243,7 @@ io.on("connection", (socket) => {
       " has added " +
       data.value +
       " to " +
-      goalsArray[data.idx].goal;
+      goalsArray[data.id].goal;
     Polly.synthesizeSpeech(
       {
         Text: text,
@@ -257,14 +262,14 @@ io.on("connection", (socket) => {
         }
       }
     );
-    goalsArray[data.idx].current = goalsArray[data.idx].current + data.value;
+    goalsArray[data.id].current = goalsArray[data.id].current + data.value;
     updateGoal({
-      goal: goalsArray[data.idx].goal,
+      goal: goalsArray[data.id].goal,
       value: data.value,
       username: data.username,
     });
     data.type = "goal";
-    data.subtype = goalsArray[data.idx].goal;
+    data.subtype = goalsArray[data.id].goal;
     data.message = "";
     newLog(data);
     updateCurrency({ username: data.username, value: -data.value });
@@ -308,6 +313,7 @@ io.on("connection", (socket) => {
     deleteGoal(data);
   });
   socket.on("saveredemptions", (data) => {
+    console.log(data);
     updateRedemptions(data);
   });
   socket.on("deleteredemption", (data) => {
@@ -318,6 +324,12 @@ io.on("connection", (socket) => {
       resetGreenBar(1);
     }
     resetGoal(data.goal);
+  });
+  socket.on("getsettings", () => {
+    getSettings().then((item) => {
+      console.log(item);
+      socket.emit("getsettings", item);
+    });
   });
 });
 async function updateSettings(data) {
@@ -376,7 +388,6 @@ async function deleteGoal(data) {
     });
 }
 async function updateRedemptions(data) {
-  console.log(data);
   await Object.keys(data).forEach((redemption) => {
     Object.entries(data[redemption]).forEach(async (field) => {
       database.collection("redemptions").updateOne(
@@ -609,8 +620,9 @@ async function deleteEvent(id) {
 async function getUser(input) {
   data = await database
     .collection("users")
-    .findOne({ userId: input })
+    .findOne({ userId: input }, { projection: { _id: 0, userId: 0 } })
     .then(async (item) => {
+      console.log(item);
       if (item === null) {
         item = await axios
           .get("https://api.twitch.tv/helix/users?id=" + input, {
@@ -629,7 +641,6 @@ async function getUser(input) {
             };
           });
       }
-      item.settings = await getSettings();
 
       if (
         item.vip &&
