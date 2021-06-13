@@ -21,16 +21,11 @@ const youtubeAPIKey = process.env.YOUTUBE_API_KEY;
 const key = process.env.JWT_KEY;
 const secretJwt = Buffer.from(key, "base64");
 
-const Polly = new AWS.Polly(
-  {
-    accessKeyId: process.env.AWS_KEY,
-    secretAccessKey: process.env.AWS_SECRET,
-    region: "eu-west-3",
-  },
-  (data) => {
-    console.log(data);
-  }
-);
+const Polly = new AWS.Polly({
+  accessKeyId: process.env.AWS_KEY,
+  secretAccessKey: process.env.AWS_SECRET,
+  region: "eu-west-3",
+});
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -78,7 +73,6 @@ function verifyAndDecode(header) {
 }
 
 io.on("connection", (socket) => {
-  console.log("hi");
   socket.on("join", (data) => {
     socket.join(data.name.toLowerCase());
     socket.version = data.version;
@@ -221,11 +215,9 @@ io.on("connection", (socket) => {
     io.sockets.emit("stoptimer");
   });
   socket.on("updatecurrency", (data) => {
-    console.log(data);
     updateCurrency(data);
   });
   socket.on("refund", (data) => {
-    console.log(data);
     updateCurrency({ username: data.user, value: data.event.cost });
     io.to(data.user.toLowerCase()).emit("updatecurrency", data.event.cost);
     if (data.event.type) deleteEvent(data._id);
@@ -237,7 +229,6 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("goalupdate", (data) => {
-    console.log(data);
     let text =
       data.username +
       " has added " +
@@ -280,7 +271,6 @@ io.on("connection", (socket) => {
     updateGreenBarTitle();
   });
   socket.on("money", (data) => {
-    console.log(data);
     updateCurrency({ username: data.username, value: Math.floor(data.value) });
     io.to(data.username.toLowerCase()).emit(
       "updatecurrency",
@@ -313,7 +303,6 @@ io.on("connection", (socket) => {
     deleteGoal(data);
   });
   socket.on("saveredemptions", (data) => {
-    console.log(data);
     updateRedemptions(data);
   });
   socket.on("deleteredemption", (data) => {
@@ -327,7 +316,6 @@ io.on("connection", (socket) => {
   });
   socket.on("getsettings", () => {
     getSettings().then((item) => {
-      console.log(item);
       socket.emit("getsettings", item);
     });
   });
@@ -352,9 +340,7 @@ async function updateSettings(data) {
   }, 1000);
 }
 async function updateGoals(data) {
-  console.log(data);
   await Object.keys(data).forEach((goal) => {
-    console.log(goal);
     Object.entries(data[goal]).forEach(async (field) => {
       database.collection("goals").updateOne(
         {
@@ -594,13 +580,11 @@ app.get("/getlogs", (req, res) => {
   })();
 });
 app.post("/getcurrency", (req, res) => {
-  console.log(req.body);
   (async () => {
     await database
       .collection("users")
       .findOne({ username: req.body.username })
       .then((item) => {
-        console.log(item);
         return res.json(item !== null ? item.currency : 0);
       });
   })();
@@ -608,6 +592,7 @@ app.post("/getcurrency", (req, res) => {
 app.post("/getuser", (req, res) => {
   let data = verifyAndDecode(req.body.userToken);
   (async () => {
+    console.log(data);
     getUser(data.user_id).then((result) => {
       return res.json(result);
     });
@@ -622,7 +607,6 @@ async function getUser(input) {
     .collection("users")
     .findOne({ userId: input }, { projection: { _id: 0, userId: 0 } })
     .then(async (item) => {
-      console.log(item);
       if (item === null) {
         item = await axios
           .get("https://api.twitch.tv/helix/users?id=" + input, {
@@ -632,7 +616,6 @@ async function getUser(input) {
             },
           })
           .then((result) => {
-            console.log(result.data.data);
             addUser(result.data.data[0]);
             return {
               username: result.data.data[0].display_name,
@@ -750,7 +733,6 @@ async function updateGreenBarAmount(value) {
       },
     ])
     .then((item) => {
-      console.log(item);
       io.sockets.emit("greenbarcurrent", value);
     });
 }
