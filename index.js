@@ -592,7 +592,8 @@ app.post("/getcurrency", (req, res) => {
 app.post("/getuser", (req, res) => {
   let data = verifyAndDecode(req.body.userToken);
   (async () => {
-    if (data.channel_id === 687993904) {
+    console.log(data);
+    if (data.channel_id === "687993904") {
       return res.json({ username: isTester, currency: 100 });
     }
     getUser(data.user_id).then((result) => {
