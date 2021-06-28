@@ -84,11 +84,17 @@ io.on("connection", (socket) => {
       getGreenBarData();
       socket.emit("getrequests", requestsArray);
       socket.emit("getgoals", goalsArray);
+      socket.emit("getredemptions", redemptionsArray);
+      (async () => {
+        let logs = await getLogs();
+        socket.emit("geteventlog", logs);
+      })();
       (async () => {
         await getSettings().then((item) => {
           socket.emit("getsettings", item);
         });
       })();
+      socket.emit("starttimer", timer, timerRunning);
     }
   });
   socket.on("disconnecting", () => {
@@ -138,9 +144,12 @@ io.on("connection", (socket) => {
     io.sockets.emit("getrequests", requestsArray);
   });
   socket.on("redemption", async (data) => {
+    console.log(redemptionsArray);
     let redemption = redemptionsArray[data.id - 1];
+
     data.subtype = redemption.type;
     data.value = redemption.cost;
+    data.type = "redemption";
     let text = data.username + " has redeemed " + data.subtype;
     Polly.synthesizeSpeech(
       {
@@ -183,6 +192,8 @@ io.on("connection", (socket) => {
     if (data.subtype === "vip for a year") {
       //data=user
       updateVip(data);
+    } else {
+      newLog(data);
     }
   });
   socket.on("starttimer", () => {
@@ -217,9 +228,9 @@ io.on("connection", (socket) => {
   socket.on("updatecurrency", (data) => {
     updateCurrency(data);
   });
-  socket.on("refund", (data) => {
+  socket.on("refund", async (data) => {
     updateCurrency({ username: data.user, value: data.event.cost });
-    io.to(data.user.toLowerCase()).emit("updatecurrency", data.event.cost);
+
     if (data.event.type) deleteEvent(data._id);
     if (data.event.type === "goal") {
       let result = goalsArray.find(({ goal }) => goal === data.event.subtype);
@@ -227,6 +238,8 @@ io.on("connection", (socket) => {
       updateGoal({ goal: data.event.subtype, value: -data.event.cost });
       io.sockets.emit("getgoals", goalsArray);
     }
+    let logs = await getLogs();
+    io.sockets.emit("geteventlog", logs);
   });
   socket.on("goalupdate", (data) => {
     let text =
@@ -314,10 +327,9 @@ io.on("connection", (socket) => {
     }
     resetGoal(data.goal);
   });
-  socket.on("getsettings", () => {
-    getSettings().then((item) => {
-      socket.emit("getsettings", item);
-    });
+  socket.on("getsettings", async () => {
+    let settings = await getSettings();
+    socket.emit("getsettings", settings);
   });
 });
 async function updateSettings(data) {
@@ -334,81 +346,71 @@ async function updateSettings(data) {
     });
   });
   setTimeout(async () => {
-    await getSettings().then((item) => {
-      io.sockets.emit("getsettings", item);
-    });
+    let settings = await getSettings();
+    io.sockets.emit("getsettings", settings);
   }, 1000);
 }
 async function updateGoals(data) {
-  await Object.keys(data).forEach((goal) => {
-    Object.entries(data[goal]).forEach(async (field) => {
-      database.collection("goals").updateOne(
-        {
-          goal: goal === "new goal" ? data[goal].goal : goal,
-        },
-        {
-          $set: {
-            [field[0]]: field[1],
+  Object.keys(data).forEach((goal) => {
+    if (goal === "new goal") {
+      database.collection("goals").insertOne(data[goal]);
+    } else
+      Object.entries(data[goal]).forEach((field) => {
+        database.collection("goals").updateOne(
+          {
+            goal,
           },
-        },
-        { upsert: true }
-      );
-    });
+          {
+            $set: {
+              [field[0]]: field[1],
+            },
+          },
+          { upsert: true }
+        );
+      });
   });
   setTimeout(async () => {
-    await initGoals().then((item) => {
-      io.sockets.emit("getgoals", item);
-    });
+    let goals = await initGoals();
+    io.sockets.emit("getgoals", goals);
   }, 1000);
 }
 async function deleteGoal(data) {
-  await database
-    .collection("goals")
-    .deleteOne({ goal: data.goal })
-    .then(() => {
-      setTimeout(async () => {
-        await initGoals().then((item) => {
-          io.sockets.emit("getgoals", item);
-        });
-      }, 1000);
-    });
+  await database.collection("goals").deleteOne({ goal: data.goal });
+  (async () => {
+    let goals = await initGoals();
+    io.sockets.emit("getgoals", goals);
+  })();
 }
 async function updateRedemptions(data) {
-  await Object.keys(data).forEach((redemption) => {
-    Object.entries(data[redemption]).forEach(async (field) => {
-      database.collection("redemptions").updateOne(
-        {
-          type:
-            redemption === "new redemption"
-              ? data[redemption].type
-              : redemption,
-        },
-        {
-          $set: {
-            [field[0]]: field[1],
+  Object.keys(data).forEach((redemption) => {
+    if (redemption === "new redemption") {
+      database.collection("redemptions").insertOne(data[redemption]);
+    } else
+      Object.entries(data[redemption]).forEach((field) => {
+        database.collection("redemptions").updateOne(
+          {
+            type: redemption,
           },
-        },
-        { upsert: true }
-      );
-    });
+          {
+            $set: {
+              [field[0]]: field[1],
+            },
+          },
+          { upsert: true }
+        );
+      });
   });
   setTimeout(async () => {
-    await initRedemptions().then((item) => {
-      io.sockets.emit("getredemptions", item);
-    });
+    let redemptions = await initRedemptions();
+    io.sockets.emit("getredemptions", redemptions);
   }, 1000);
 }
 async function deleteRedemption(data) {
-  await database
-    .collection("redemptions")
-    .deleteOne({ type: data.type })
-    .then(() => {
-      setTimeout(async () => {
-        await initRedemptions().then((item) => {
-          io.sockets.emit("getredemptions", item);
-        });
-      }, 1000);
-    });
+  await database.collection("redemptions").deleteOne({ type: data.type });
+  (async () => {
+    let redemptions = await initRedemptions();
+    io.sockets.emit("getredemptions", redemptions);
+  })();
 }
 async function updateVip(data) {
   await database
@@ -428,36 +430,32 @@ async function updateVip(data) {
       await database
         .collection("users")
         .updateOne({ username: res.username }, { $set: { vip: res.vip } });
-    })
-    .then(() => {
-      data.value = -data.value;
-      updateCurrency(data);
     });
+
+  data.value = -data.value;
+  updateCurrency(data);
 }
 async function initRequests() {
-  requestsArray = await initData("requests").then((res) => {
-    for (let index = 0; index < res.length; index++) {
-      res[index].id = index + 1;
-    }
-    return res;
-  });
+  requestsArray = await initData("requests");
+  for (let index = 0; index < requestsArray.length; index++) {
+    requestsArray[index].id = index + 1;
+  }
+  return requestsArray;
 }
 async function initGoals() {
-  goalsArray = await initData("goals").then((res) => {
-    for (let index = 0; index < res.length; index++) {
-      res[index].id = index + 1;
-    }
-    return res;
-  });
+  goalsArray = await initData("goals");
+  for (let index = 0; index < goalsArray.length; index++) {
+    goalsArray[index].id = index + 1;
+  }
+
   return goalsArray;
 }
 async function initRedemptions() {
-  redemptionsArray = await initData("redemptions").then((res) => {
-    for (let index = 0; index < res.length; index++) {
-      res[index].id = index + 1;
-    }
-    return res;
-  });
+  redemptionsArray = await initData("redemptions");
+  for (let index = 0; index < redemptionsArray.length; index++) {
+    redemptionsArray[index].id = index + 1;
+  }
+
   return redemptionsArray;
 }
 async function getLog() {
@@ -466,36 +464,29 @@ async function getLog() {
     .collection("events")
     .find({ date: { $gte: last30days } })
     .sort({ date: -1 })
-    .toArray()
-    .then((item) => {
-      return item;
-    });
+    .toArray();
+
   return data;
 }
 
 async function initData(collection) {
-  res = await database
-    .collection(collection)
-    .find({})
-    .toArray()
-    .then((item) => {
-      return item;
-    });
+  res = await database.collection(collection).find({}).toArray();
+
   return res;
 }
 
 function requestTimer(lookup) {
   timer = timer - 1;
-  if (timer <= 0) {
-    timerRunning = false;
-    clearInterval(timerInterval);
-    deleteRequest(lookup);
-    requestsArray.splice(0, 1);
-    for (let index = 0; index < requestsArray.length; index++) {
-      requestsArray[index].id = index + 1;
-    }
-    io.sockets.emit("getrequests", requestsArray);
+  if (timer > 0) return;
+
+  timerRunning = false;
+  clearInterval(timerInterval);
+  deleteRequest(lookup);
+  requestsArray.splice(0, 1);
+  for (let index = 0; index < requestsArray.length; index++) {
+    requestsArray[index].id = index + 1;
   }
+  io.sockets.emit("getrequests", requestsArray);
 }
 async function linkCheck(data) {
   let link = data.message.split(" ");
@@ -533,71 +524,55 @@ async function getYoutubeTitle(id) {
     youtubeAPIKey +
     "&part=snippet&id=" +
     id;
-  res = await axios.get(url).then(function (response) {
-    return response.data.items[0].snippet.title;
-  });
-  return res;
+  let { response } = await axios.get(url);
+  return response.data.items[0].snippet.title;
 }
 
-app.get("/getlogs", (req, res) => {
-  let logs;
-  (async function () {
-    logs = await getLog().then((data) => {
-      let currentDate = new Date();
-      let date = [];
-      for (let index = 0; index < data.length; index++) {
-        date[index] = new Date(data[index].date);
-        let hours = Math.ceil(Math.abs(currentDate - date[index]) / 3600000);
-        if (hours < 24) {
-          data[index].date = hours + "h";
-        } else {
-          data[index].date = Math.floor(hours / 24) + "d";
-        }
-        data[index].id = index;
-        if (data[index].event.type === "goal")
-          data[index].text =
-            data[index].date +
-            " - " +
-            data[index].user +
-            " added to " +
-            data[index].event.subtype +
-            " - " +
-            data[index].event.cost;
-        else if (data[index].event.type === "redemption") {
-          data[index].text =
-            data[index].date +
-            " - " +
-            data[index].user +
-            " redeemed " +
-            data[index].event.subtype +
-            " - " +
-            data[index].event.cost;
-        }
-      }
-      return data;
-    });
-    return res.json(logs);
-  })();
-});
-app.post("/getcurrency", (req, res) => {
-  (async () => {
-    await database
-      .collection("users")
-      .findOne({ username: req.body.username })
-      .then((item) => {
-        return res.json(item !== null ? item.currency : 0);
-      });
-  })();
-});
+async function getLogs() {
+  let data = await getLog();
+  let currentDate = new Date();
+  let date = [];
+  for (let index = 0; index < data.length; index++) {
+    date[index] = new Date(data[index].date);
+    let hours = Math.ceil(Math.abs(currentDate - date[index]) / 3600000);
+    if (hours < 24) {
+      data[index].date = hours + "h";
+    } else {
+      data[index].date = Math.floor(hours / 24) + "d";
+    }
+    data[index].id = index;
+    if (data[index].event.type === "goal")
+      data[index].text =
+        data[index].date +
+        " - " +
+        data[index].user +
+        " added to " +
+        data[index].event.subtype +
+        " - " +
+        data[index].event.cost;
+    else if (data[index].event.type === "redemption") {
+      data[index].text =
+        data[index].date +
+        " - " +
+        data[index].user +
+        " redeemed " +
+        data[index].event.subtype +
+        " - " +
+        data[index].event.cost;
+    }
+  }
+  console.log(data.slice(0, 5));
+  return data;
+}
+
 app.post("/getuser", (req, res) => {
   let data = verifyAndDecode(req.body.userToken);
   (async () => {
     if (data.channel_id === "687993904") {
       return res.json({ username: "isTester", currency: 100 });
     }
-    getUser(data.user_id).then((result) => {
-      return res.json(result);
-    });
+    let user = await getUser(data.user_id);
+    return res.json(user);
   })();
 });
 
@@ -605,124 +580,106 @@ async function deleteEvent(id) {
   database.collection("events").deleteOne({ _id: ObjectId(id) });
 }
 async function getUser(input) {
-  data = await database
+  user = await database
     .collection("users")
-    .findOne({ userId: input }, { projection: { _id: 0, userId: 0 } })
-    .then(async (item) => {
-      if (item === null) {
-        item = await axios
-          .get("https://api.twitch.tv/helix/users?id=" + input, {
-            headers: {
-              "client-id": process.env.CLIENT_ID,
-              Authorization: process.env.TWITCH_AUTH,
-            },
-          })
-          .then((result) => {
-            addUser(result.data.data[0]);
-            return {
-              username: result.data.data[0].display_name,
-              currency: 0,
-              userId: result.data.data[0].id,
-            };
-          });
+    .findOne({ userId: input }, { projection: { _id: 0, userId: 0 } });
+
+  if (user === null) {
+    let { response } = await axios.get(
+      "https://api.twitch.tv/helix/users?id=" + input,
+      {
+        headers: {
+          "client-id": process.env.CLIENT_ID,
+          Authorization: process.env.TWITCH_AUTH,
+        },
       }
+    );
 
-      if (
-        item.vip &&
-        new Date(item.vip.toDateString()) < new Date(new Date().toDateString())
-      ) {
-        chatClientAdmin
-          .unvip("cenoroid", item.username)
-          .then(() => {
-            database
-              .collection("users")
-              .updateOne({ username: item.username }, { $unset: { vip: "" } });
-          })
-          .catch((e) => console.log(e));
-      }
+    addUser(response.data.data[0]);
+    return {
+      username: response.data.data[0].display_name,
+      currency: 0,
+      userId: response.data.data[0].id,
+    };
+  }
 
-      return item;
-    });
+  if (
+    user.vip &&
+    new Date(user.vip.toDateString()) < new Date(new Date().toDateString())
+  ) {
+    chatClientAdmin.unvip("cenoroid", user.username);
 
-  return data;
+    database
+      .collection("users")
+      .updateOne({ username: user.username }, { $unset: { vip: "" } });
+  }
+
+  return user;
 }
 async function getSettings() {
-  item = await database
-    .collection("settings")
-    .find({})
-    .toArray()
-    .then((array) => {
-      let entries = new Map();
-      for (let i = 0; i < array.length; i++) {
-        entries.set(array[i].type, array[i]);
-      }
-      return Object.fromEntries(entries);
-    });
-  return item;
+  let settings = await database.collection("settings").find({}).toArray();
+
+  let entries = new Map();
+  for (let i = 0; i < settings.length; i++) {
+    entries.set(settings[i].type, settings[i]);
+  }
+  return Object.fromEntries(entries);
 }
 async function getGreenBarData() {
-  await database
-    .collection("greenbar")
-    .find({})
-    .toArray()
-    .then((item) => {
-      io.sockets.emit("greenbardata", item[0]);
-    });
+  let greenbar = await database.collection("greenbar").findOne({});
+
+  io.sockets.emit("greenbardata", greenbar);
 }
 async function resetGreenBar(data) {
-  await database
+  let greenbar = await database
     .collection("greenbar")
-    .find({ _id: ObjectId("6080e9c360ce6ffaba4d2399") })
-    .toArray()
-    .then((item) => {
-      if (item[0].ran) {
-        update = { ran: false };
-      } else if (item[0].current >= item[0].end) {
-        update = {
-          current: item[0].current - item[0].end,
-          end: item[0].end + 5,
-          ran: data ? true : false,
-        };
-      } else {
-        update = { end: item[0].end - 5 };
-      }
-      database.collection("greenbar").updateOne(
-        { _id: ObjectId("6080e9c360ce6ffaba4d2399") },
-        {
-          $set: update,
-        }
-      );
-      getGreenBarData();
-      if (data) {
-        io.sockets.emit("pinata", item[0].end);
-      }
-    });
+    .findOne({ _id: ObjectId("6080e9c360ce6ffaba4d2399") });
+
+  if (greenbar.ran) {
+    update = { ran: false };
+  } else if (greenbar.current >= greenbar.end) {
+    update = {
+      current: greenbar.current - greenbar.end,
+      end: greenbar.end + 5,
+      ran: data ? true : false,
+    };
+  } else {
+    update = { end: greenbar.end - 5 };
+  }
+  await database.collection("greenbar").updateOne(
+    { _id: ObjectId("6080e9c360ce6ffaba4d2399") },
+    {
+      $set: update,
+    }
+  );
+  getGreenBarData();
+  if (data) {
+    io.sockets.emit("pinata", greenbar.end);
+  }
 }
 greenBarTitleArray = [];
 greenBarCd = false;
+
 async function updateGreenBarTitle() {
   if (greenBarTitleArray.length > 0) {
-    if (!greenBarCd) {
-      greenBarCd = true;
-      await database
-        .collection("greenbar")
-        .updateOne(
-          { _id: ObjectId("6080e9c360ce6ffaba4d2399") },
-          {
-            $set: {
-              title: greenBarTitleArray[0],
-            },
-          }
-        )
-        .then(() => {
-          io.sockets.emit("greenbartitle", greenBarTitleArray[0]);
-          setTimeout(() => {
-            greenBarCd = false;
-            greenBarTitleArray.shift();
-            updateGreenBarTitle();
-          }, 30000);
-        });
-    }
+    if (greenBarCd) return;
+
+    greenBarCd = true;
+    await database.collection("greenbar").updateOne(
+      { _id: ObjectId("6080e9c360ce6ffaba4d2399") },
+      {
+        $set: {
+          title: greenBarTitleArray[0],
+        },
+      }
+    );
+
+    io.sockets.emit("greenbartitle", greenBarTitleArray[0]);
+    setTimeout(() => {
+      greenBarCd = false;
+      greenBarTitleArray.shift();
+      updateGreenBarTitle();
+    }, 30000);
   }
 }
 
@@ -733,116 +690,84 @@ async function updateGreenBarAmount(value) {
       {
         $set: { current: { $round: [{ $add: ["$current", value] }, 2] } },
       },
-    ])
-    .then((item) => {
-      io.sockets.emit("greenbarcurrent", value);
-    });
+    ]);
+
+  io.sockets.emit("greenbarcurrent", value);
 }
 
 async function resetGoal(goal) {
   await database
     .collection("goals")
-    .updateOne({ goal }, { $set: { current: 0 } })
-    .then(async () => {
-      await initGoals().then(() => {
-        io.sockets.emit("getgoals", goalsArray);
-      });
-    });
-}
-async function getData(collection, socket, all) {
-  data = await database
-    .collection(collection)
-    .find({})
-    .toArray()
-    .then((item) => {
-      if (all) {
-        socket.broadcast.emit("get" + collection, item);
-      }
-      //socket.emit("get" + collection, item);
-      return item;
-    });
-  return data;
+    .updateOne({ goal }, { $set: { current: 0 } });
+
+  let goalsArray = await initGoals();
+  io.sockets.emit("getgoals", goalsArray);
 }
 
 async function addUser(input) {
-  await database
-    .collection("users")
-    .updateOne(
-      { username: input.display_name },
-      {
-        $set: {
-          userId: input.id,
-          currency: 0,
-        },
+  await database.collection("users").updateOne(
+    { username: input.display_name },
+    {
+      $set: {
+        userId: input.id,
+        currency: 0,
       },
-      { upsert: true }
-    )
-    .then(() => {});
+    },
+    { upsert: true }
+  );
 }
 
 async function newLog(input) {
-  await database
-    .collection("events")
-    .insertOne({
-      user: input.username,
-      event: {
-        type: input.type,
-        subtype: input.subtype,
-        message: input.message,
-        cost: input.value,
-      },
-      date: new Date(),
-    })
-    .then(() => {
-      database.collection("charity").updateOne(
-        {
-          lookup: "fund",
-        },
-        { $inc: { current: -input.value / 10 } }
-      );
-    });
-}
-async function addRequest(input) {
-  await database
-    .collection("requests")
-    .insertOne({
-      name: input.username,
+  await database.collection("events").insertOne({
+    user: input.username,
+    event: {
       type: input.type,
       subtype: input.subtype,
       message: input.message,
-      link: input.link,
-      lookup: input.lookup,
-    })
-    .then(() => {
-      input.value = -input.value;
-      updateCurrency(input);
-    });
+      cost: input.value,
+    },
+    date: new Date(),
+  });
+
+  database.collection("charity").updateOne(
+    {
+      lookup: "fund",
+    },
+    { $inc: { current: -input.value / 10 } }
+  );
+
+  let logs = await getLogs();
+  io.sockets.emit("geteventlog", logs);
+}
+async function addRequest(input) {
+  await database.collection("requests").insertOne({
+    name: input.username,
+    type: input.type,
+    subtype: input.subtype,
+    message: input.message,
+    link: input.link,
+    lookup: input.lookup,
+  });
+
+  input.value = -input.value;
+  updateCurrency(input);
 }
 async function updateGoal(search) {
   await database
     .collection("goals")
-    .updateOne({ goal: search.goal }, { $inc: { current: search.value } })
-    .then(() => {});
+    .updateOne({ goal: search.goal }, { $inc: { current: search.value } });
 }
 async function updateCurrency(data) {
   data.value = Number(data.value);
   await database
     .collection("users")
-    .updateOne({ username: data.username }, { $inc: { currency: data.value } })
-    .then(() => {
-      io.to(data.username.toLowerCase()).emit("updatecurrency", data.value);
-    });
+    .updateOne({ username: data.username }, { $inc: { currency: data.value } });
+
+  io.to(data.username.toLowerCase()).emit("updatecurrency", data.value);
 }
-async function updatePref(search) {
-  await database.collection("users").updateOne(
-    { username: search.username },
-    {
-      $set: { pref: { bgColor: search.bgColor, position: search.position } },
-    }
-  );
-}
-async function deleteRequest(search) {
-  await database.collection("requests").deleteOne({ lookup: search });
+
+function deleteRequest(search) {
+  database.collection("requests").deleteOne({ lookup: search });
 }
 
 server.listen(process.env.PORT || 5000, () => {
